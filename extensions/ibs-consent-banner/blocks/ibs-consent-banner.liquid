@@ -1,0 +1,59 @@
+
+{% schema %}
+{
+  "name": "IBS Consent Banner",
+  "target": "body",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enable_banner",
+      "label": "Enable consent banner",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "banner_heading",
+      "label": "Banner heading",
+      "default": "We value your privacy"
+    },
+    {
+      "type": "textarea",
+      "id": "banner_message",
+      "label": "Banner message",
+      "default": "We use cookies to enhance your browsing experience, serve personalized ads or content, and analyze our traffic."
+    },
+    {
+      "type": "text",
+      "id": "accept_text",
+      "label": "Accept button",
+      "default": "Accept All"
+    },
+    {
+      "type": "text",
+      "id": "reject_text",
+      "label": "Reject button",
+      "default": "Reject All"
+    },
+    {
+      "type": "text",
+      "id": "manage_text",
+      "label": "Manage preferences button",
+      "default": "Manage Preferences"
+    }
+  ]
+}
+{% endschema %}
+
+{% if block.settings.enable_banner %}
+  <div
+    id="ibs-consent-root"
+    data-heading="{{ block.settings.banner_heading | escape }}"
+    data-message="{{ block.settings.banner_message | escape }}"
+    data-accept="{{ block.settings.accept_text | escape }}"
+    data-reject="{{ block.settings.reject_text | escape }}"
+    data-manage="{{ block.settings.manage_text | escape }}"
+  ></div>
+
+  {{ 'ibs-consent-banner.css' | asset_url | stylesheet_tag }}
+  <script src="{{ 'ibs-consent-banner.js' | asset_url }}" defer></script>
+{% endif %}
