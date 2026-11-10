@@ -8,7 +8,7 @@ import db from "../db.server";
 
 const DEFAULT_SETTINGS = {
   enabled: true,
-  gtmContainerId: "",
+  gtmContainerId: "GTM-W6FC6DCM",
   consentMode: "STRICT",
   consentScope: "WORLDWIDE",
   gpcEnabled: true,

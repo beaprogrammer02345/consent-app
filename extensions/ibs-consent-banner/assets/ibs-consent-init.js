@@ -4,7 +4,10 @@
 
   const STORAGE_KEY = "ibs_consent_preferences";
 
-  // Set Google's consent defaults immediately.
+  // --------------------------------------------------
+  // 1. Initialize Google Consent Mode defaults FIRST
+  // --------------------------------------------------
+
   window.dataLayer = window.dataLayer || [];
 
   window.gtag = window.gtag || function () {
@@ -18,12 +21,49 @@
     ad_personalization: "denied"
   });
 
+  // --------------------------------------------------
+  // 2. Detect GPC
+  // --------------------------------------------------
+
+  const query = new URLSearchParams(window.location.search);
+
+  // Temporary testing option. Remove before production.
+  const gpcTestMode =
+    query.get("ibs_gpc_test") === "1";
+
+  const gpcDetected =
+    navigator.globalPrivacyControl === true || gpcTestMode;
+
+  console.log("IBS GPC detected:", gpcDetected);
+
+  // --------------------------------------------------
+  // 3. Read saved visitor preferences
+  // --------------------------------------------------
+
   function readConsent() {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY));
+      return JSON.parse(
+        localStorage.getItem(STORAGE_KEY)
+      );
     } catch {
       return null;
     }
+  }
+
+  function saveConsent(value) {
+    const saved = {
+      necessary: true,
+      analytics: Boolean(value.analytics),
+      advertising: Boolean(value.advertising),
+      updatedAt: new Date().toISOString()
+    };
+
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(saved)
+    );
+
+    return saved;
   }
 
   let consent = readConsent() || {
@@ -32,13 +72,17 @@
     advertising: false
   };
 
-  const query = new URLSearchParams(location.search);
+  // GPC overrides previously saved optional consent.
+  if (gpcDetected) {
+    consent = saveConsent({
+      analytics: false,
+      advertising: false
+    });
+  }
 
-  // Temporary test switch. Remove before production.
-  const gpcTestMode = query.get("ibs_gpc_test") === "1";
-
-  const gpcDetected =
-    navigator.globalPrivacyControl === true || gpcTestMode;
+  // --------------------------------------------------
+  // 4. Map preferences to Google Consent Mode v2
+  // --------------------------------------------------
 
   function enforceGPC(value) {
     if (gpcDetected) {
@@ -72,87 +116,24 @@
 
   consent = enforceGPC(consent);
 
-  function updateGoogleConsent(value) {
-    consent = enforceGPC(value);
+  // --------------------------------------------------
+  // 5. GTM configuration and loading
+  // --------------------------------------------------
 
-    window.gtag(
-      "consent",
-      "update",
-      getGoogleConsent(consent)
-    );
-
-    return { ...consent };
-  }
-
-  // Make the update function available to the banner.
-  window.IBSConsent = {
-    update: updateGoogleConsent,
-    getConsent: () => ({ ...consent }),
-    gpcDetected
-  };
-
-  // Apply the saved visitor choice, or denied defaults.
-  updateGoogleConsent(consent);
-
-  if (gpcDetected) {
-    console.log("IBS: GPC detected. Optional consent denied.");
-  }
-
-  // Retrieve merchant settings from the Shopify App Proxy.
-  fetch("/apps/ibs-consent-config", {
-    credentials: "same-origin",
-    cache: "no-store"
-  })
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error("Unable to retrieve consent settings.");
-      }
-
-      return response.json();
-    })
-    .then((settings) => {
-      if (!settings.enabled) {
-        console.log("IBS Consent Manager is disabled.");
-        return;
-      }
-
-      const containerId = settings.gtmContainerId;
-
-      if (!containerId) {
-        console.warn("IBS: GTM Container ID is not configured.");
-        return;
-      }
-
-      if (!/^GTM-[A-Z0-9]+$/.test(containerId)) {
-        console.error("IBS: Invalid GTM Container ID.");
-        return;
-      }
-
-      const mode = settings.consentMode;
-
-      // Strict mode: load GTM only after at least one
-      // optional category has been granted.
-      const shouldLoadStrict =
-        mode === "STRICT" &&
-        (consent.analytics || consent.advertising);
-
-      // Soft mode: load GTM after denied defaults.
-      const shouldLoadSoft = mode === "SOFT";
-
-      if (!shouldLoadStrict && !shouldLoadSoft) {
-        console.log("IBS: GTM waiting for visitor consent.");
-        return;
-      }
-
-      loadGTM(containerId);
-    })
-    .catch((error) => {
-      console.error("IBS configuration error:", error);
-    });
+  let merchantSettings = null;
+  let gtmLoaded = false;
 
   function loadGTM(containerId) {
-    if (window.__ibsGtmLoaded) return;
+    if (gtmLoaded || window.__ibsGtmLoaded) {
+      return;
+    }
 
+    if (!/^GTM-[A-Z0-9]+$/.test(containerId)) {
+      console.error("IBS: Invalid GTM Container ID.");
+      return;
+    }
+
+    gtmLoaded = true;
     window.__ibsGtmLoaded = true;
 
     window.dataLayer.push({
@@ -163,6 +144,7 @@
     const script = document.createElement("script");
 
     script.async = true;
+
     script.src =
       "https://www.googletagmanager.com/gtm.js?id=" +
       encodeURIComponent(containerId);
@@ -171,6 +153,110 @@
 
     console.log("IBS: GTM loading:", containerId);
   }
+
+  function maybeLoadGTM() {
+    if (!merchantSettings) return;
+
+    if (!merchantSettings.enabled) {
+      console.log("IBS: Consent Manager is disabled.");
+      return;
+    }
+
+    const containerId = merchantSettings.gtmContainerId;
+
+    if (!containerId) {
+      console.warn("IBS: GTM Container ID is not configured.");
+      return;
+    }
+
+    const mode = String(
+      merchantSettings.consentMode || "STRICT"
+    ).toUpperCase();
+
+    const hasOptionalConsent =
+      consent.analytics || consent.advertising;
+
+    if (mode === "STRICT") {
+      if (!hasOptionalConsent || gpcDetected) {
+        console.log("IBS: Strict mode waiting for consent.");
+        return;
+      }
+
+      loadGTM(containerId);
+      return;
+    }
+
+    if (mode === "SOFT") {
+      // Denied defaults are already established.
+      loadGTM(containerId);
+      return;
+    }
+
+    console.warn("IBS: Unknown consent mode:", mode);
+  }
+
+  // --------------------------------------------------
+  // 6. Update Google consent and GTM loading
+  // --------------------------------------------------
+
+  function updateGoogleConsent(value) {
+    consent = enforceGPC(value);
+
+    window.gtag("consent", "update",
+      getGoogleConsent(consent)
+    );
+
+    maybeLoadGTM();
+
+    return { ...consent };
+  }
+
+  // Expose a small public API for the banner.
+  window.IBSConsent = {
+    update: updateGoogleConsent,
+
+    getConsent: () => ({ ...consent }),
+
+    gpcDetected
+  };
+
+  // Apply existing preferences on page load.
+  updateGoogleConsent(consent);
+
+  // --------------------------------------------------
+  // 7. Retrieve settings from Shopify App Proxy
+  // --------------------------------------------------
+
+  fetch("/apps/ibs-consent-config", {
+    credentials: "same-origin",
+    cache: "no-store"
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(
+          "Unable to retrieve consent settings."
+        );
+      }
+
+      return response.json();
+    })
+    .then((settings) => {
+      merchantSettings = settings;
+
+      console.log("IBS settings loaded:", {
+        enabled: settings.enabled,
+        consentMode: settings.consentMode,
+        gtmConfigured: Boolean(settings.gtmContainerId)
+      });
+
+      // Handles saved consent and Soft mode.
+      // Also handles a visitor who clicked before
+      // the settings request finished.
+      maybeLoadGTM();
+    })
+    .catch((error) => {
+      console.error("IBS configuration error:", error);
+    });
 
   console.log("IBS: Consent initialization completed.");
 })();

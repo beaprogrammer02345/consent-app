@@ -9,13 +9,14 @@
   const settings = root.dataset;
 
   const STORAGE_KEY = "ibs_consent_preferences";
-  // Temporary development-only GPC test
-const gpcTestMode =
+ const gpcTestMode =
   new URLSearchParams(window.location.search).get("ibs_gpc_test") === "1";
 
-// Detect actual browser GPC or temporary test mode
 const gpcDetected =
-  navigator.globalPrivacyControl === true || gpcTestMode;
+  window.IBSConsent?.gpcDetected ??
+  (navigator.globalPrivacyControl === true || gpcTestMode);
+
+console.log("IBS GPC detected in banner:", gpcDetected);
 
 console.log("IBS GPC detected:", gpcDetected);
   
@@ -292,7 +293,16 @@ advertising = finalConsent.advertising;
 // Save the final visitor selection.
 saveConsent(analytics, advertising);
 
-
+// Update Google Consent Mode v2 and trigger GTM
+// loading when the configured mode permits it.
+if (window.IBSConsent) {
+  window.IBSConsent.update({
+    analytics: analytics,
+    advertising: advertising
+  });
+} else {
+  console.error("IBS Consent Init has not loaded.");
+}
   // Update Shopify's native privacy consent.
   try {
     await updateShopifyConsent(analytics, advertising);
@@ -303,8 +313,6 @@ saveConsent(analytics, advertising);
   closePreferences();
   updateUI();
 }
-
-
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
 
