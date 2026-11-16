@@ -2,7 +2,7 @@
 
 client_id = "557b79d531def22c8a726ed3b309daec"
 name = "consent-app"
-application_url = "https://example.com"
+application_url = "https://consent-app-las5.onrender.com"
 embedded = true
 
 [access_scopes]
@@ -76,7 +76,7 @@ api_version = "2026-10"
   query_filter = "product.status:'ACTIVE'"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://consent-app-las5.onrender.com/api/auth" ]
 
 [build]
 include_config_on_deploy = true
