@@ -154,46 +154,52 @@
     console.log("IBS: GTM loading:", containerId);
   }
 
-  function maybeLoadGTM() {
-    if (!merchantSettings) return;
+function maybeLoadGTM() {
+  if (!merchantSettings) return;
 
-    if (!merchantSettings.enabled) {
-      console.log("IBS: Consent Manager is disabled.");
-      return;
-    }
-
-    const containerId = merchantSettings.gtmContainerId;
-
-    if (!containerId) {
-      console.warn("IBS: GTM Container ID is not configured.");
-      return;
-    }
-
-    const mode = String(
-      merchantSettings.consentMode || "STRICT"
-    ).toUpperCase();
-
-    const hasOptionalConsent =
-      consent.analytics || consent.advertising;
-
-    if (mode === "STRICT") {
-      if (!hasOptionalConsent || gpcDetected) {
-        console.log("IBS: Strict mode waiting for consent.");
-        return;
-      }
-
-      loadGTM(containerId);
-      return;
-    }
-
-    if (mode === "SOFT") {
-      // Denied defaults are already established.
-      loadGTM(containerId);
-      return;
-    }
-
-    console.warn("IBS: Unknown consent mode:", mode);
+  if (!merchantSettings.enabled) {
+    console.log("IBS: Consent Manager is disabled.");
+    return;
   }
+
+  // Do not load GTM when GPC is detected.
+  if (gpcDetected) {
+    console.log("IBS: GPC detected. GTM loading blocked.");
+    return;
+  }
+
+  const containerId = merchantSettings.gtmContainerId;
+
+  if (!containerId) {
+    console.warn("IBS: GTM Container ID is not configured.");
+    return;
+  }
+
+  const mode = String(
+    merchantSettings.consentMode || "STRICT"
+  ).toUpperCase();
+
+  const hasOptionalConsent =
+    consent.analytics || consent.advertising;
+
+  if (mode === "STRICT") {
+    if (!hasOptionalConsent) {
+      console.log("IBS: Strict mode waiting for consent.");
+      return;
+    }
+
+    loadGTM(containerId);
+    return;
+  }
+
+  if (mode === "SOFT") {
+    loadGTM(containerId);
+    return;
+  }
+
+  console.warn("IBS: Unknown consent mode:", mode);
+}
+
 
   // --------------------------------------------------
   // 6. Update Google consent and GTM loading

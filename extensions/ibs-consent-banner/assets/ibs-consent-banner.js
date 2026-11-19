@@ -81,7 +81,7 @@ function loadShopifyPrivacyAPI() {
       [
         {
           name: "consent-tracking-api",
-          version: "0.2",
+          version: "1.0",
         },
       ],
       (error) => {
