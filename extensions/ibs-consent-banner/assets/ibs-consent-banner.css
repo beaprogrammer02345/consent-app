@@ -66,8 +66,14 @@
 
 .ibs-consent-btn.ibs-accept {
   background: #ffffff;
-  color: #191919;
+  color: #191919 !important;
   border-color: #ffffff;
+}
+div#ibs-consent-banner .ibs-consent-btn {
+    color: #fff !important;
+}
+div#ibs-consent-banner .ibs-consent-btn.ibs-accept {
+  color: #191919 !important;
 }
 
 #ibs-consent-modal {
