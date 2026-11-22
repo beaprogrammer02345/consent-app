@@ -1,5 +1,20 @@
 
-(() => {
+(async () => {
+  // --------------------------------------------------
+  // 1. Wait for IBS initialization and geolocation
+  // --------------------------------------------------
+
+  if (window.IBSConsent?.ready) {
+    try {
+      await window.IBSConsent.ready;
+    } catch (error) {
+      console.warn(
+        "IBS: Initialization was not completed successfully.",
+        error
+      );
+    }
+  }
+
   const root = document.getElementById("ibs-consent-root");
 
   if (!root || document.getElementById("ibs-consent-banner")) {
@@ -9,124 +24,184 @@
   const settings = root.dataset;
 
   const STORAGE_KEY = "ibs_consent_preferences";
- const gpcTestMode =
-  new URLSearchParams(window.location.search).get("ibs_gpc_test") === "1";
 
-const gpcDetected =
-  window.IBSConsent?.gpcDetected ??
-  (navigator.globalPrivacyControl === true || gpcTestMode);
+  // --------------------------------------------------
+  // 2. Read GPC status and calculated consent scope
+  // --------------------------------------------------
 
-console.log("IBS GPC detected in banner:", gpcDetected);
+  const gpcTestMode =
+    new URLSearchParams(window.location.search)
+      .get("ibs_gpc_test") === "1";
 
-console.log("IBS GPC detected:", gpcDetected);
-  
-    // // Global Privacy Control detection
-    // function isGPCEnabled() {
-    // return navigator.globalPrivacyControl === true;
-    // }
+  const gpcDetected =
+    window.IBSConsent?.gpcDetected ??
+    (navigator.globalPrivacyControl === true || gpcTestMode);
 
-    // const gpcDetected = isGPCEnabled();
+  const consentScopeStatus =
+    window.IBSConsent?.getScopeStatus?.() || null;
 
-    // console.log("IBS GPC detected:", gpcDetected);
-   
-function applyGPCRestriction(analytics, advertising) {
-  if (gpcDetected) {
+  console.log("IBS GPC detected in banner:", gpcDetected);
+
+  console.log("IBS banner scope information:", {
+    ...consentScopeStatus,
+    bannerAvailable: true
+  });
+
+  // Important:
+  // The banner remains available to all visitors.
+  // consentRulesApply will be used for consent-rule
+  // decisions, not to hide the banner.
+
+  // --------------------------------------------------
+  // 3. GPC restrictions
+  // --------------------------------------------------
+
+  function applyGPCRestriction(analytics, advertising) {
+    if (gpcDetected) {
+      return {
+        analytics: false,
+        advertising: false
+      };
+    }
+
     return {
-      analytics: false,
-      advertising: false,
-    };
-  }
-
-  return {
-    analytics,
-    advertising,
-  };
-}
-
-  function readConsent() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY));
-    } catch {
-      return null;
-    }
-  }
-
-  function saveConsent(analytics, advertising) {
-    const consent = {
-      necessary: true,
       analytics,
-      advertising,
-      updatedAt: new Date().toISOString(),
+      advertising
     };
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(consent));
-
-    return consent;
   }
 
+  // --------------------------------------------------
+  // 4. Read and save visitor preferences
+  // --------------------------------------------------
   
-function loadShopifyPrivacyAPI() {
-  return new Promise((resolve, reject) => {
-    if (window.Shopify?.customerPrivacy) {
-      resolve(window.Shopify.customerPrivacy);
-      return;
+function readConsent() {
+  try {
+    const cookie = document.cookie
+      .split("; ")
+      .find((item) => item.startsWith(`${STORAGE_KEY}=`));
+
+    if (cookie) {
+      const value = cookie.substring(STORAGE_KEY.length + 1);
+      const parsed = JSON.parse(decodeURIComponent(value));
+
+      return {
+        necessary: true,
+        analytics: Boolean(parsed.analytics),
+        advertising: Boolean(parsed.advertising)
+      };
     }
 
-    if (!window.Shopify?.loadFeatures) {
-      reject(new Error("Shopify Customer Privacy API is unavailable."));
-      return;
+    // Migrate an existing visitor preference if present.
+    const legacy = localStorage.getItem(STORAGE_KEY);
+
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      const migrated = saveConsent(
+        parsed.analytics,
+        parsed.advertising
+      );
+
+      localStorage.removeItem(STORAGE_KEY);
+
+      return migrated;
     }
 
-    window.Shopify.loadFeatures(
-      [
-        {
-          name: "consent-tracking-api",
-          version: "0.2",
-        },
-      ],
-      (error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
+    return null;
+  } catch (error) {
+    console.warn("IBS: Unable to read consent:", error);
+    return null;
+  }
+}
 
-        if (!window.Shopify.customerPrivacy) {
-          reject(new Error("Customer Privacy API failed to initialize."));
-          return;
-        }
+function saveConsent(analytics, advertising) {
+  const saved = {
+    necessary: true,
+    analytics: Boolean(analytics),
+    advertising: Boolean(advertising)
+  };
 
+  const cookieValue = encodeURIComponent(JSON.stringify(saved));
+
+  const secure =
+    window.location.protocol === "https:" ? "; Secure" : "";
+
+  document.cookie =
+    `${STORAGE_KEY}=${cookieValue}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+
+  return saved;
+}
+
+
+  // --------------------------------------------------
+  // 5. Shopify Customer Privacy API
+  // --------------------------------------------------
+
+  function loadShopifyPrivacyAPI() {
+    return new Promise((resolve, reject) => {
+      if (window.Shopify?.customerPrivacy) {
         resolve(window.Shopify.customerPrivacy);
+        return;
       }
-    );
-  });
-}
 
-async function updateShopifyConsent(analytics, advertising) {
-  const privacyAPI = await loadShopifyPrivacyAPI();
-
-  return new Promise((resolve) => {
-    privacyAPI.setTrackingConsent(
-      {
-        analytics: analytics,
-        marketing: advertising,
-      },
-      () => {
-        console.log("Shopify consent successfully updated.");
-
-        console.log(
-          "Current Shopify consent:",
-          privacyAPI.currentVisitorConsent()
+      if (!window.Shopify?.loadFeatures) {
+        reject(
+          new Error("Shopify Customer Privacy API is unavailable.")
         );
-
-        resolve();
+        return;
       }
-    );
-  });
-}
 
+      window.Shopify.loadFeatures(
+        [
+          {
+            name: "consent-tracking-api",
+            version: "0.2"
+          }
+        ],
+        (error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
 
+          if (!window.Shopify.customerPrivacy) {
+            reject(
+              new Error("Customer Privacy API failed to initialize.")
+            );
+            return;
+          }
 
-  const savedConsent = readConsent();
+          resolve(window.Shopify.customerPrivacy);
+        }
+      );
+    });
+  }
+
+  async function updateShopifyConsent(analytics, advertising) {
+    const privacyAPI = await loadShopifyPrivacyAPI();
+
+    return new Promise((resolve) => {
+      privacyAPI.setTrackingConsent(
+        {
+          analytics: analytics,
+          marketing: advertising
+        },
+        () => {
+          console.log("Shopify consent successfully updated.");
+
+          console.log(
+            "Current Shopify consent:",
+            privacyAPI.currentVisitorConsent()
+          );
+
+          resolve();
+        }
+      );
+    });
+  }
+
+  // --------------------------------------------------
+  // 6. Create the consent banner
+  // --------------------------------------------------
 
   const banner = document.createElement("div");
   banner.id = "ibs-consent-banner";
@@ -155,6 +230,10 @@ async function updateShopifyConsent(analytics, advertising) {
       </button>
     </div>
   `;
+
+  // --------------------------------------------------
+  // 7. Create the preferences modal
+  // --------------------------------------------------
 
   const modal = document.createElement("div");
   modal.id = "ibs-consent-modal";
@@ -223,14 +302,29 @@ async function updateShopifyConsent(analytics, advertising) {
     </div>
   `;
 
+  // --------------------------------------------------
+  // 8. Cookie Preferences button
+  // --------------------------------------------------
+
   const preferencesButton = document.createElement("button");
   preferencesButton.id = "ibs-cookie-preferences";
   preferencesButton.textContent = "Cookie Preferences";
 
-  document.body.append(banner, modal, preferencesButton);
+  document.body.append(
+    banner,
+    modal,
+    preferencesButton
+  );
 
-  const analyticsToggle = document.getElementById("ibs-analytics-toggle");
-  const advertisingToggle = document.getElementById("ibs-advertising-toggle");
+  const analyticsToggle =
+    document.getElementById("ibs-analytics-toggle");
+
+  const advertisingToggle =
+    document.getElementById("ibs-advertising-toggle");
+
+  // --------------------------------------------------
+  // 9. Open and close preferences
+  // --------------------------------------------------
 
   function openPreferences() {
     const consent = readConsent();
@@ -245,6 +339,10 @@ async function updateShopifyConsent(analytics, advertising) {
     modal.classList.remove("ibs-open");
   }
 
+  // --------------------------------------------------
+  // 10. Update banner UI
+  // --------------------------------------------------
+
   function updateUI() {
     const consent = readConsent();
 
@@ -257,62 +355,72 @@ async function updateShopifyConsent(analytics, advertising) {
     }
   }
 
-  
-async function handleChoice(action) {
-  if (action === "manage") {
-    openPreferences();
-    return;
+  // --------------------------------------------------
+  // 11. Handle visitor choices
+  // --------------------------------------------------
+
+  async function handleChoice(action) {
+    if (action === "manage") {
+      openPreferences();
+      return;
+    }
+
+    let analytics = false;
+    let advertising = false;
+
+    if (action === "accept") {
+      analytics = true;
+      advertising = true;
+    } else if (action === "reject") {
+      analytics = false;
+      advertising = false;
+    } else if (action === "save") {
+      analytics = analyticsToggle.checked;
+      advertising = advertisingToggle.checked;
+    } else {
+      return;
+    }
+
+    // Apply GPC restrictions before saving.
+    const finalConsent = applyGPCRestriction(
+      analytics,
+      advertising
+    );
+
+    analytics = finalConsent.analytics;
+    advertising = finalConsent.advertising;
+
+    // Save visitor preferences.
+    saveConsent(analytics, advertising);
+
+    // Update Google Consent Mode v2 and GTM.
+    if (window.IBSConsent) {
+      window.IBSConsent.update({
+        analytics: analytics,
+        advertising: advertising
+      });
+    } else {
+      console.error("IBS Consent Init has not loaded.");
+    }
+
+    // Update Shopify native privacy consent.
+    try {
+      await updateShopifyConsent(analytics, advertising);
+    } catch (error) {
+      console.error(
+        "Shopify consent update failed:",
+        error
+      );
+    }
+
+    closePreferences();
+    updateUI();
   }
 
-  let analytics = false;
-  let advertising = false;
+  // --------------------------------------------------
+  // 12. Event listeners
+  // --------------------------------------------------
 
-  if (action === "accept") {
-    analytics = true;
-    advertising = true;
-  } else if (action === "reject") {
-    analytics = false;
-    advertising = false;
-  } else if (action === "save") {
-    analytics = analyticsToggle.checked;
-    advertising = advertisingToggle.checked;
-  } else {
-    return;
-  }
-
-  
-// Apply GPC restrictions before saving.
-const finalConsent = applyGPCRestriction(
-  analytics,
-  advertising
-);
-
-analytics = finalConsent.analytics;
-advertising = finalConsent.advertising;
-
-// Save the final visitor selection.
-saveConsent(analytics, advertising);
-
-// Update Google Consent Mode v2 and trigger GTM
-// loading when the configured mode permits it.
-if (window.IBSConsent) {
-  window.IBSConsent.update({
-    analytics: analytics,
-    advertising: advertising
-  });
-} else {
-  console.error("IBS Consent Init has not loaded.");
-}
-  // Update Shopify's native privacy consent.
-  try {
-    await updateShopifyConsent(analytics, advertising);
-  } catch (error) {
-    console.error("Shopify consent update failed:", error);
-  }
-
-  closePreferences();
-  updateUI();
-}
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
 
@@ -321,13 +429,20 @@ if (window.IBSConsent) {
     }
   });
 
-  preferencesButton.addEventListener("click", openPreferences);
+  preferencesButton.addEventListener(
+    "click",
+    openPreferences
+  );
 
   modal.addEventListener("click", (event) => {
     if (event.target === modal) {
       closePreferences();
     }
   });
+
+  // --------------------------------------------------
+  // 13. Escape HTML
+  // --------------------------------------------------
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, (character) => {
@@ -336,12 +451,24 @@ if (window.IBSConsent) {
         "<": "&lt;",
         ">": "&gt;",
         '"': "&quot;",
-        "'": "&#39;",
+        "'": "&#39;"
       };
 
       return entities[character];
     });
   }
 
+  // --------------------------------------------------
+  // 14. Initial UI update
+  // --------------------------------------------------
+
   updateUI();
+
+  console.log("IBS: Consent banner initialized.", {
+    bannerAvailable: true,
+    gpcDetected,
+    consentScope: consentScopeStatus?.merchantScope,
+    consentRulesApply: consentScopeStatus?.consentRulesApply
+  });
+
 })();
