@@ -378,23 +378,24 @@ function maybeLoadGTM() {
   });
 
   window.IBSConsent = {
-    update: updateGoogleConsent,
-
-    getConsent: () => ({ ...consent }),
-
-    gpcDetected,
-
-    ready: initializationReady,
-
-    getGeoLocation: () => (
-      geoLocation ? { ...geoLocation } : null
-    ),
-
-    getScopeStatus: () => ({ ...scopeStatus }),
-    getSettings: () => (
-      merchantSettings ? { ...merchantSettings } : null
-    ),
+  update: updateGoogleConsent,
+  getConsent: () => ({ ...consent }),
+  gpcDetected,
+  // Merchant status, populated after settings load.
+  enabled: null,
+  ready: initializationReady,
+  getGeoLocation: () => (
+    geoLocation ? { ...geoLocation } : null
+  ),
+  getScopeStatus: () => ({ ...scopeStatus }),
+  // Preserve merchant dashboard customization.
+  getSettings: () => (
+    merchantSettings ? { ...merchantSettings } : null
+    )
   };
+
+  // Notify the banner script that the API is available.
+  window.dispatchEvent(new Event("ibs:api-ready"));
 
   // Apply existing preferences on page load.
   updateGoogleConsent(consent);
@@ -417,10 +418,25 @@ function maybeLoadGTM() {
       return response.json();
     })
     .then((settings) => {
-      merchantSettings = settings;
 
-      // Read the geolocation returned by the backend.
-      geoLocation = settings.geoLocation || null;
+  // Read the merchant's Enabled / Disabled setting.
+  const managerEnabled = settings.enabled === true;
+
+  // Preserve all retrieved settings and use a boolean status.
+  merchantSettings = {
+    ...settings,
+    enabled: managerEnabled
+  };
+
+  // Expose status to the banner.
+  window.IBSConsent.enabled = managerEnabled;
+
+  console.log("IBS Consent Manager status:", {
+    enabled: window.IBSConsent.enabled
+  });
+
+  // Read the geolocation returned by the backend.
+  geoLocation = settings.geoLocation || null;
 
       // Calculate whether the selected geographic
       // consent rules apply to this visitor.

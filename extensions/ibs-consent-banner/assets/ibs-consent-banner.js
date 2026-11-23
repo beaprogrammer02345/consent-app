@@ -1,9 +1,20 @@
-
 (async () => {
   // --------------------------------------------------
-  // 1. Wait for IBS initialization and geolocation
+  // 1. Wait for IBS initialization and settings
   // --------------------------------------------------
 
+  // Wait for the init script if the banner loads first.
+  if (!window.IBSConsent) {
+    await new Promise((resolve) => {
+      window.addEventListener(
+        "ibs:api-ready",
+        resolve,
+        { once: true }
+      );
+    });
+  }
+
+  // Wait until merchant settings have loaded.
   if (window.IBSConsent?.ready) {
     try {
       await window.IBSConsent.ready;
@@ -13,6 +24,14 @@
         error
       );
     }
+  }
+
+  // Do not create the banner if the merchant disabled it.
+  if (window.IBSConsent?.enabled !== true) {
+    console.log(
+      "IBS: Consent Manager is disabled. Banner will not be displayed."
+    );
+    return;
   }
 
   const root = document.getElementById("ibs-consent-root");
