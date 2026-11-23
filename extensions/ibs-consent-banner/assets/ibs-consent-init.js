@@ -400,7 +400,7 @@ function maybeLoadGTM() {
   // 9. Retrieve settings and geolocation from App Proxy
   // --------------------------------------------------
 
-  fetch("/apps/ibs-consent-config", {
+  fetch("/apps/ibs-consent-config-1", {
     credentials: "same-origin",
     cache: "no-store"
   })

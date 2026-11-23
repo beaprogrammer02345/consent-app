@@ -12,7 +12,7 @@ scopes = "write_products,write_metaobjects,write_metaobject_definitions,write_ap
 [app_proxy]
 url = "/apps/consent-config"
 prefix = "apps"
-subpath = "ibs-consent-config"
+subpath = "ibs-consent-config-1"
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"
