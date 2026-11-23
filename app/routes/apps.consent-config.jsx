@@ -165,7 +165,15 @@ export const loader = async ({ request }) => {
       gtmContainerId: true,
       consentMode: true,
       consentScope: true,
-      gpcEnabled: true
+      gpcEnabled: true,
+        
+      bannerHeading: true,
+      bannerMessage: true,
+      acceptButtonText: true,
+      rejectButtonText: true,
+      manageButtonText: true,
+      analyticsLabel: true,
+      advertisingLabel: true
     }
   });
 
@@ -175,7 +183,14 @@ export const loader = async ({ request }) => {
     gtmContainerId: "",
     consentMode: "STRICT",
     consentScope: "WORLDWIDE",
-    gpcEnabled: true
+    gpcEnabled: true,
+    bannerHeading: "We value your privacy",
+    bannerMessage: "We use cookies to enhance your browsing experience.",
+    acceptButtonText: "Accept All",
+    rejectButtonText: "Reject All",
+    manageButtonText: "Manage Preferences",
+    analyticsLabel: "Analytics",
+    advertisingLabel: "Advertising"
   };
 
   // 10. Return existing settings and location

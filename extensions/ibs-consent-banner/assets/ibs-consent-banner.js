@@ -21,7 +21,36 @@
     return;
   }
 
-  const settings = root.dataset;
+  // Existing Theme Editor settings remain available as fallback.
+  const themeSettings = root.dataset;
+
+    // Retrieve merchant settings from the App Proxy response.
+    const merchantSettings =
+      window.IBSConsent?.getSettings?.() || {};
+
+    // Prefer the settings saved in the IBS merchant dashboard.
+    const settings = {
+      heading:
+        merchantSettings.bannerHeading ?? themeSettings.heading,
+
+      message:
+        merchantSettings.bannerMessage ?? themeSettings.message,
+
+      accept:
+        merchantSettings.acceptButtonText ?? themeSettings.accept,
+
+      reject:
+        merchantSettings.rejectButtonText ?? themeSettings.reject,
+
+      manage:
+        merchantSettings.manageButtonText ?? themeSettings.manage,
+
+      analyticsLabel:
+        merchantSettings.analyticsLabel ?? themeSettings.analyticsLabel,
+
+      advertisingLabel:
+        merchantSettings.advertisingLabel ?? themeSettings.advertisingLabel
+    };
 
   const STORAGE_KEY = "ibs_consent_preferences";
 

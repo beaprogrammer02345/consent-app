@@ -390,7 +390,10 @@ function maybeLoadGTM() {
       geoLocation ? { ...geoLocation } : null
     ),
 
-    getScopeStatus: () => ({ ...scopeStatus })
+    getScopeStatus: () => ({ ...scopeStatus }),
+    getSettings: () => (
+      merchantSettings ? { ...merchantSettings } : null
+    ),
   };
 
   // Apply existing preferences on page load.
